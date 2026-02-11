@@ -4,8 +4,11 @@ import { View, Text, FlatList, Image, TouchableOpacity, StyleSheet, Alert, Activ
 // 👇 ตรวจสอบ ngrok ให้ตรงกัน
 const BASE_URL = "https://uncookable-ross-nonabusively.ngrok-free.dev"; 
 
-export default function ManageBookingsScreen({ route }) {
+export default function ManageBookingsScreen({ route, navigation }) {
     const user = route?.params?.user; 
+    const initialTab = route?.params?.initialTab || 'bookings'; // ✅ เพิ่มบรรทัดนี้
+    const [tab, setTab] = useState(initialTab); // ✅ เพิ่มบรรทัดนี้
+    const [products, setProducts] = useState([]); // ✅ เพิ่มบรรทัดนี้เพื่อเก็บสินค้า
     const [bookings, setBookings] = useState([]);
     const [loading, setLoading] = useState(true);
 
@@ -31,6 +34,20 @@ export default function ManageBookingsScreen({ route }) {
             Alert.alert("Error", "ไม่สามารถดึงข้อมูลรายการเช่าได้");
         } finally {
             setLoading(false);
+        }
+    };
+
+    const fetchMyProducts = async () => {
+        try {
+            const response = await fetch(`${BASE_URL}/products`, {
+                headers: { 'ngrok-skip-browser-warning': 'true' }
+            });
+            const data = await response.json();
+            // กรองให้เหลือแค่สินค้าที่เป็นของเรา (เจ้าของร้าน)
+            const myData = data.filter(p => p.owner_name === user?.name || p.owner_id === user?.id);
+            setProducts(myData);
+        } catch (error) {
+            console.error("Error MyProducts:", error);
         }
     };
 
@@ -87,6 +104,29 @@ export default function ManageBookingsScreen({ route }) {
             }
         ]);
     };
+
+    const renderProductItem = ({ item }) => (
+    <View style={styles.card}>
+        <View style={{ flexDirection: 'row', alignItems: 'center' }}>
+            <Image 
+                source={{ uri: `${BASE_URL}/uploads/${item.image_url}` }} 
+                style={{ width: 65, height: 65, borderRadius: 10 }} 
+            />
+            <View style={{ flex: 1, marginLeft: 15 }}>
+                <Text style={{ fontWeight: 'bold', fontSize: 16 }}>{item.name}</Text>
+                <Text style={{ color: '#FF385C', fontWeight: 'bold' }}>{item.price_per_day} ฿/วัน</Text>
+            </View>
+            
+            {/* ✅ ปุ่มแก้ไขที่จะส่งค่าไป App.js */}
+            <TouchableOpacity 
+                style={styles.editBtn} 
+                onPress={() => navigation.navigate('EditProduct', { product: item })}
+            >
+                <Text style={{ color: '#fff', fontSize: 12, fontWeight: 'bold' }}>แก้ไข</Text>
+            </TouchableOpacity>
+        </View>
+    </View>
+);
 
     const renderItem = ({ item }) => {
         let actionButtons = null;
@@ -229,7 +269,7 @@ export default function ManageBookingsScreen({ route }) {
                 <ActivityIndicator size="large" color="#FF385C" style={{marginTop: 50}} />
             ) : (
                 <FlatList
-                    data={bookings}
+                    data={tab === 'bookings' ? bookings : products}
                     keyExtractor={(item) => item.id.toString()}
                     renderItem={renderItem}
                     refreshControl={<RefreshControl refreshing={loading} onRefresh={fetchOwnerBookings} />}
@@ -241,35 +281,36 @@ export default function ManageBookingsScreen({ route }) {
     );
 }
 
-// Helper Functions
+// Helper Functions สำหรับหน้า "รายการเช่าของฉัน"
 const getStatusColor = (status) => {
     switch (status) {
-        case 'pending': return '#FFC107';
-        case 'approved': return '#1976D2'; // น้ำเงิน
-        case 'shipped': return '#9C27B0'; // ม่วง
-        case 'active': return '#4CAF50'; // เขียว (รับเงินค่าเช่าแล้ว)
-        case 'returned': return '#FF9800'; // ส้ม (รอตรวจ)
-        case 'completed': return '#8BC34A'; // เขียวอ่อน (จบงาน)
-        case 'damaged': return '#F44336'; // แดง
-        case 'rejected': return '#F44336';
+        case 'waiting_verification': return '#607D8B'; // สีเทาฟ้า (กำลังตรวจสอบสลิป)
+        case 'pending': return '#FFC107'; // สีเหลือง (รอเจ้าของอนุมัติ)
+        case 'approved': return '#1976D2'; // สีน้ำเงิน (เจ้าของอนุมัติแล้ว/รอจัดส่ง)
+        case 'shipped': return '#9C27B0'; // สีม่วง (ร้านส่งของแล้ว)
+        case 'active': return '#4CAF50'; // สีเขียว (คุณได้รับของแล้ว/กำลังเช่า)
+        case 'returned': return '#FF9800'; // สีส้ม (คุณคืนของแล้ว/รอเจ้าของตรวจ)
+        case 'completed': return '#8BC34A'; // สีเขียวอ่อน (จบงาน/ได้รับมัดจำคืนแล้ว)
+        case 'damaged': return '#F44336'; // สีแดง (มีค่าเสียหาย)
+        case 'rejected': return '#F44336'; // สีแดง (รายการถูกปฏิเสธ)
         default: return '#000';
     }
 };
 
 const getStatusLabel = (status) => {
     switch (status) {
-        case 'pending': return 'รออนุมัติ';
-        case 'approved': return 'รอจัดส่ง';
-        case 'shipped': return 'จัดส่งแล้ว';
-        case 'active': return 'กำลังเช่า';
-        case 'returned': return 'รอตรวจรับคืน';
-        case 'completed': return 'จบงานปกติ';
-        case 'damaged': return 'เสียหาย (ยึดมัดจำ)';
-        case 'rejected': return 'ยกเลิก';
+        case 'waiting_verification': return 'ระบบกำลังตรวจสอบ'; // 👈 ตามที่คุณต้องการ
+        case 'pending': return 'รอเจ้าของอนุมัติ';
+        case 'approved': return 'ร้านกำลังเตรียมจัดส่ง';
+        case 'shipped': return 'ร้านจัดส่งแล้ว (รอคุณยืนยันรับของ)';
+        case 'active': return 'กำลังเช่าสินค้า';
+        case 'returned': return 'ส่งคืนแล้ว (รอเจ้าของตรวจสอบ)';
+        case 'completed': return 'จบการเช่า (ได้รับมัดจำคืนแล้ว)';
+        case 'damaged': return 'พบความเสียหาย (ยึดเงินมัดจำ)';
+        case 'rejected': return 'ปฏิเสธการเช่า';
         default: return status;
     }
 };
-
 const styles = StyleSheet.create({
     container: { flex: 1, backgroundColor: '#f5f5f5', padding: 10 },
     card: { backgroundColor: '#fff', borderRadius: 12, padding: 15, marginBottom: 15, elevation: 3 },

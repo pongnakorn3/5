@@ -3,9 +3,10 @@ import { StyleSheet, Text, View, Button, Image, TouchableOpacity, TextInput, Scr
 import * as WebBrowser from 'expo-web-browser';
 import { useURL } from 'expo-linking';
 import * as ImagePicker from 'expo-image-picker';
+import { LogBox } from 'react-native';
 
 // ✅ Import หน้าจอต่างๆ 
-import AddProductScreen from './AddProductScreen';
+//import AddProductScreen from './AddProductScreen';
 import HomeScreen from './HomeScreen'; 
 import ProductDetailScreen from './ProductDetailScreen';
 import ManageBookingsScreen from './ManageBookingsScreen'; 
@@ -13,7 +14,10 @@ import MyBookingsScreen from './MyBookings'; // ชี้ไปที่ชื�
 import ChatScreen from './ChatScreen'; 
 import ProfileScreen from './ProfileScreen';
 import PaymentSummary from './PaymentSummary'; // 👈 เพิ่มต่อจาก ProfileScreen (ประมาณบรรทัดที่ 14)
+import CartScreen from './CartScreen';
+import EditProductScreen from './EditProductScreen';
 
+LogBox.ignoreAllLogs(); // 👈 บรรทัดนี้จะสั่งให้แอป "ปิด" การโชว์หน้าจอแจ้งเตือนสีแดงทั้งหมด
 
 // 👇👇👇 1. เปลี่ยน Link Ngrok ล่าสุดของคุณที่นี่
 const BASE_URL = "https://uncookable-ross-nonabusively.ngrok-free.dev"; 
@@ -47,6 +51,8 @@ function PaymentScreen({ route, onBack, onComplete }) {
             Alert.alert("แจ้งเตือน", "กรุณาแนบรูปสลิปการโอนเงิน");
             return;
         }
+    
+  
 
         setLoading(true);
         try {
@@ -290,21 +296,47 @@ export default function App() {
   };
 
   // ✅ ฟังก์ชันเริ่มแชท
-  const handleStartChat = (otherUserId, otherUserName) => {
+  // const handleStartChat = (otherUserId, otherUserName) => {
+  //   if (!userData) return;
+  //   console.log
+  //   const userId1 = userData.id < otherUserId ? userData.id : otherUserId;
+  //   const userId2 = userData.id > otherUserId ? userData.id : otherUserId;
+  //   const roomId = `chat_${userId1}_${userId2}`;
+
+  //   setChatParams({
+  //       room_id: roomId,
+  //       user_id: userData.id,
+  //       other_user_name: otherUserName || 'คู่สนทนา'
+  //   });
+  //   setCurrentScreen('chat'); 
+  // };
+const handleStartChat = (otherUserId, otherUserName) => {
     if (!userData) return;
-    
-    const userId1 = userData.id < otherUserId ? userData.id : otherUserId;
-    const userId2 = userData.id > otherUserId ? userData.id : otherUserId;
+
+    // 1. ป้องกันแชทกับตัวเอง
+    if (Number(userData.id) === Number(otherUserId)) {
+        Alert.alert("แจ้งเตือน", "คุณไม่สามารถแชทกับตัวเองได้");
+        return;
+    }
+
+    // 2. แปลงเป็น Number เพื่อความแม่นยำในการเปรียบเทียบ
+    const myId = Number(userData.id);
+    const targetId = Number(otherUserId);
+
+    console.log("DEBUG My ID:", myId); 
+    console.log("DEBUG Other ID:", targetId);
+
+    const userId1 = myId < targetId ? myId : targetId;
+    const userId2 = myId > targetId ? myId : targetId;
     const roomId = `chat_${userId1}_${userId2}`;
 
     setChatParams({
         room_id: roomId,
-        user_id: userData.id,
+        user_id: myId,
         other_user_name: otherUserName || 'คู่สนทนา'
     });
-    setCurrentScreen('chat'); 
-  };
-
+    setCurrentScreen('chat');
+};
   const pickImage = async (setImageFunc) => {
     const { status } = await ImagePicker.requestCameraPermissionsAsync();
     if (status !== 'granted') {
@@ -316,8 +348,9 @@ export default function App() {
         allowsEditing: false,    
         quality: 0.5,            
     });
-    if (!result.canceled) setImageFunc(result.assets[0].uri);
-  };
+    if (!result.canceled) {
+      setImageFunc(result.assets[0].uri);
+  }};
 
   const handleKycSubmit = async () => {
     if (!idCardImage || !faceImage || !idNumber) {
@@ -353,6 +386,42 @@ export default function App() {
         Alert.alert("Error", "ส่งข้อมูลไม่สำเร็จ: " + error.message);
     } finally {
         setLoading(false);
+    }
+  };// ✅ เพิ่มฟังก์ชันบันทึกที่อยู่ใหม่ตรงนี้
+  const handleUpdateAddress = async () => {
+    if (!address.trim()) {
+      Alert.alert("แจ้งเตือน", "กรุณากรอกที่อยู่ใหม่ก่อนบันทึก");
+      return;
+    }
+
+    setLoading(true);
+    try {
+      // 💡 หมายเหตุ: ตรวจสอบว่า API Path ของคุณคือ /auth/update-address หรือไม่
+      const response = await fetch(`${BASE_URL}/auth/update-address`, {
+        method: 'POST',
+        headers: { 
+          'Content-Type': 'application/json',
+          'ngrok-skip-browser-warning': 'true' 
+        },
+        body: JSON.stringify({
+          user_id: userData.id,
+          address: address
+        }),
+      });
+
+      const json = await response.json();
+
+      if (json.success) {
+        setUserData({ ...userData, address: address }); // อัปเดตข้อมูลในเครื่องทันที
+        Alert.alert("สำเร็จ", "แก้ไขที่อยู่เรียบร้อยแล้ว");
+        setCurrentScreen('main'); // ปิดหน้าแก้ไขกลับไปหน้าหลัก
+      } else {
+        Alert.alert("ผิดพลาด", json.message || "บันทึกไม่สำเร็จ");
+      }
+    } catch (error) {
+      Alert.alert("Error", "เชื่อมต่อเซิร์ฟเวอร์ไม่ได้: " + error.message);
+    } finally {
+      setLoading(false);
     }
   };
 
@@ -410,83 +479,29 @@ export default function App() {
     setIsOtpStep(false);
   };
 
-  // ==========================================
-  // 🖥️ ส่วนแสดงผลหน้าจอ (UI Navigation)
-  // ==========================================
-
-  // 1. หน้าแชท (ใน App.js ตามรูป image_921d27.png)
-if (userData && currentScreen === 'chat' && chatParams) {
+  
+// 1. หน้าสรุปยอดเงิน (PaymentSummary)
+  if (userData && currentScreen === 'paymentSummary' && selectedProduct) {
     return (
-        <ChatScreen
-            route={{ params: chatParams }}
-            user_id={userData.id}
-            room_id={chatParams.room_id}
-            other_user_name={chatParams.other_user_name}
-            navigation={{ goBack: () => setCurrentScreen('home') }}
-            onBack={() => setCurrentScreen('home')}
-            
-            // ✅ เพิ่มส่วนนี้เข้าไปเพื่อให้หน้า ChatScreen ส่งรูปได้
-            onSendImage={async (uri) => {
-                const formData = new FormData();
-                formData.append('chat_image', {
-                    uri: uri,
-                    name: `chat_${Date.now()}.jpg`,
-                    type: 'image/jpeg',
-                });
-
-                try {
-                    const response = await fetch(`${BASE_URL}/chat/upload`, {
-                        method: 'POST',
-                        body: formData,
-                        headers: { 'Content-Type': 'multipart/form-data' },
-                    });
-                    const data = await response.json();
-                    if (data.success) {
-                        // เมื่ออัปโหลดเสร็จ ให้ส่ง URL รูปผ่าน Socket.io 
-                        // (ชื่อฟังก์ชัน handleSendMessage ต้องตรงกับที่คุณใช้ใน ChatScreen)
-                    
-                        return data.image_url; 
-                    }
-                } catch (error) {
-                    console.error("Upload error:", error);
-                    alert("ไม่สามารถอัปโหลดรูปภาพได้");
-                }
-            }}
-        />
+      <PaymentSummary
+      user={userData}
+        product={paymentData}
+        bookingId={paymentData?.bookingId} 
+        startDate={bookingDate?.start}
+        endDate={bookingDate?.end}
+        onBack={() => setCurrentScreen('productDetail')} 
+        onComplete={() => {
+          setPaymentData(null);
+          setSelectedProduct(null);
+          setCurrentScreen('myBookings'); 
+        }}
+        onConfirm={(amounts) => {
+          setPaymentData({ ...paymentData, ...amounts });
+          setCurrentScreen('paymentQR'); 
+        }}
+      />
     );
-}
-
-// 1. วางหน้าสรุปยอดเงิน (PaymentSummary)
-if (userData && currentScreen === 'paymentSummary' && selectedProduct) {
-    return (
-        <PaymentSummary
-            product={paymentData}
-            // ✅ แก้ "ไม่พบหมายเลขการจอง": ส่ง ID ที่ได้มาจากการจอง
-            bookingId={paymentData?.bookingId} 
-            startDate={bookingDate?.start}
-            endDate={bookingDate?.end}
-            
-            // ✅ แก้ "กดย้อนกลับไม่ได้": ระบุหน้าที่จะให้กลับไป
-            onBack={() => setCurrentScreen('productDetail')} 
-            
-            // ✅ แก้ "onComplete is not a function": 
-            // ฟังก์ชันนี้จะทำงานหลังจากอัปโหลดสลิปสำเร็จ
-            onComplete={() => {
-                setPaymentData(null);
-                setSelectedProduct(null);
-                setCurrentScreen('myBookings'); // ย้ายไปหน้า "รายการเช่าของฉัน"
-            }}
-
-            onConfirm={(amounts) => {
-                // รักษา bookingId เดิมไว้ และเติมยอดเงิน (amounts) เข้าไป
-                setPaymentData({ ...paymentData, ...amounts });
-                
-                // 🚩 เช็คชื่อหน้าถัดไปให้ตรง (เช่น 'paymentQR' หรือ 'payment')
-                setCurrentScreen('paymentQR'); 
-            }}
-        />
-    );
-}
+  }
 
 // 2. วางหน้าจ่ายเงิน (PaymentScreen)
 if (userData && currentScreen === 'paymentQR' && paymentData) {
@@ -498,7 +513,7 @@ if (userData && currentScreen === 'paymentQR' && paymentData) {
 }
 
 // ✅ เพิ่มก้อนนี้ลงไปใน App.js
-if (userData && currentScreen === 'paymentSummary' && paymentData) {
+if (userData && currentScreen === 'paymentSummary') {
     return (
         <PaymentSummary
             user={userData}
@@ -513,39 +528,45 @@ if (userData && currentScreen === 'paymentSummary' && paymentData) {
         />
     );
 }
-
-  // 2. หน้าลงสินค้า
-  if (userData && currentScreen === 'addProduct') {
+// 2. หน้าตะกร้าสินค้า (Cart)
+ if (userData && currentScreen === 'cart') {
     return (
-        <AddProductScreen 
-            user={userData} 
-            onBack={() => setCurrentScreen('home')}
-            navigation={{ goBack: () => setCurrentScreen('home') }} 
-        />
-    );
-  }
+      <CartScreen 
+        user={userData} 
+        onBack={() => setCurrentScreen('home')}
+        // แก้ไข: รับ payload (ก้อนข้อมูล) จาก CartScreen มาแกะใช้
+        onCheckout={(payload) => {
+            const items = payload.items || [];
+            const total = payload.totalAmount || 0;
 
-  // 3. หน้าดูรายละเอียดสินค้า
-  if (userData?.id && currentScreen === 'productDetail' && selectedProduct) {
-      return (
-        <ProductDetailScreen
-    product={selectedProduct}
-    user={userData}         // ✅ ส่งก้อนข้อมูลที่มี address ไปเช็ค
-    user_id={userData.id}   // ✅ ส่ง ID คนเช่า
-    onBack={() => { setSelectedProduct(null); setCurrentScreen('home'); }}
-    onChatPress={() => handleStartChat(selectedProduct.owner_id, selectedProduct.owner_name)}
-     onGoToPayment={(bookingId, productWithFees) => { 
-    // productWithFees คือก้อนข้อมูลที่เราส่งมาจากหน้า Detail ที่มีค่า deposit และ shipping_fee
-    setPaymentData({ 
-        bookingId: bookingId, 
-        ...productWithFees, // กระจายข้อมูลสินค้า มัดจำ และค่าส่งลงใน paymentData
-        userId: userData.id 
-    }); 
-    setCurrentScreen('paymentSummary'); // เปลี่ยนจาก 'payment' เป็น 'paymentSummary' เพื่อไปหน้าสรุปยอดก่อน
-}}
-        />
-      );
-  }
+            Alert.alert(
+                "ยืนยันการชำระเงิน",
+                `รายการสินค้า ${items.length} ชิ้น\nยอดรวมทั้งหมด ${total.toLocaleString()} บาท\n\nต้องการดำเนินการต่อหรือไม่?`,
+                [
+                    {
+                        text: "ยกเลิก",
+                        style: "cancel"
+                    },
+                    {
+                        text: "ยืนยัน",
+                        onPress: () => {
+                            // เก็บข้อมูลเข้า paymentData โดยใช้ค่าจาก payload ทั้งหมด
+                            setPaymentData({
+                                ...payload, // ดึงค่า isCart, items, totalAmount มาทั้งหมด
+                                isCart: true,
+                                bookingId: null 
+                            });
+
+                            // เปลี่ยนหน้าไปที่หน้าสรุปยอด
+                            setCurrentScreen('paymentSummary');
+                        }
+                    }
+                ]
+            );
+        }}
+      />
+    );
+ }
 
   // 4. หน้าจ่ายเงิน (เพิ่มใหม่) ✅
   if (userData && currentScreen === 'payment' && paymentData) {
@@ -678,78 +699,208 @@ if (userData && currentScreen === 'editAddress') {
     </View>
   );
 }
-  // 7. หน้าจอหลัก (Main App) & Profile
-  if (userData && (mode === 'main_app')) {
+// --- 7. หน้าจอหลัก (Main App) & Profile ---
+if (userData && (mode === 'main_app')) {
     return (
-      <View style={{flex: 1, backgroundColor: '#fff'}}>
-          <View style={{flex: 1}}>
-              {activeTab === 'market' && (
-                  <HomeScreen 
-                      navigation={{ navigate: (screenName) => { if (screenName === 'ManageBookings') setCurrentScreen('manageBookings'); } }}
-                      onProductPress={(item) => { setSelectedProduct(item); setCurrentScreen('productDetail'); }} 
-                  />
-              )}
-
-              {activeTab === 'chat_list' && (
-                  <ChatListScreen 
-                      user={userData} 
-                      onChatPress={(otherId, otherName) => handleStartChat(otherId, otherName)} 
-                  />
-              )}
-
-              {activeTab === 'profile' && (
-                  <ProfileScreen 
-                      route={{ params: { user: userData } }} 
-                      navigation={{ 
-                          navigate: (screenName) => {
-                              if (screenName === 'EditAddress') {
-                                  setAddress(userData?.address || "");
-                                  setCurrentScreen('editAddress');
-                              }
-                              if (screenName === 'ManageBookings') setCurrentScreen('manageBookings');
-                              if (screenName === 'AddProduct') setCurrentScreen('addProduct');
-                              if (screenName === 'myBookings') setCurrentScreen('myBookings');
-                              if (screenName === 'Login') handleLogout();
-                          },
-                          reset: (config) => {
-                  if (config.routes[0].name === 'Login') handleLogout();
+        <View style={{ flex: 1, backgroundColor: '#fff' }}>
+            {/* 1. ส่วนเนื้อหาหลัก */}
+            <View style={{ flex: 1 }}>
+                
+                {currentScreen === 'cart' ? (
+                    <CartScreen 
+                        user={userData} 
+                        onBack={() => setCurrentScreen('main')} 
+                    />
+                ) : currentScreen === 'paymentSummary' ? (
+                    <PaymentSummary 
+                        product={paymentData}
+                        user={userData}
+                        bookingId={paymentData?.bookingId}
+                        onBack={() => setCurrentScreen('productDetail')}
+                        onComplete={() => {
+                            setPaymentData(null);
+                            setCurrentScreen('myBookings');
+                        }}
+                    />
+                ) : (
+                    <>
+{activeTab === 'market' && (
+    currentScreen === 'productDetail' && selectedProduct ? (
+        <ProductDetailScreen 
+            route={{ params: { product: selectedProduct } }}
+            user={userData}
+            onBack={() => setCurrentScreen('main')}
+            onGoToCart={() => setCurrentScreen('cart')}
+            onGoToPayment={(bookingId, details) => {
+                setPaymentData({ ...details, bookingId });
+                setCurrentScreen('payment');
+            }}
+            navigation={{
+    goBack: () => setCurrentScreen('main'),
+    navigate: (screen, params) => { 
+        if (screen === 'Cart') {
+            setCurrentScreen('cart');
+        } else if (screen === 'EditProduct') {
+            setSelectedProduct(params.product); 
+            setCurrentScreen('EditProduct');   
+        }
+    } // ✅ ปิดปีกกาของ navigate ตรงนี้
+}}
+            onChatPress={() => {
+                if (selectedProduct?.owner_id) {
+                    handleStartChat(selectedProduct.owner_id, selectedProduct.owner_name);
+                } else {
+                    alert("ไม่พบข้อมูลผู้ให้เช่า");
                 }
-              }}
-            />
-          )}
-        </View>
+            }}
+        />
+    ) : (
+        <HomeScreen
+            user={userData || user}
+            navigation={{
+                navigate: (screen)  => { if (screen === 'ManageBookings') setCurrentScreen('manageBookings'); }
+            }}
+            onProductPress={(item) => {
+                setSelectedProduct(item);
+                setCurrentScreen('productDetail');
+            }}
+        />
+    )
+)}
 
-        {/* Bottom Bar - แถบเมนูด้านล่าง */}
-        <View style={styles.bottomBar}>
-          <TouchableOpacity 
-            style={[styles.tabButton, activeTab === 'market' && styles.activeTab]} 
-            onPress={() => setActiveTab('market')}
-          >
-            <Text style={{ fontSize: 24 }}>🏠</Text>
-            <Text style={[styles.tabText, activeTab === 'market' && styles.activeTabText]}>ตลาดเช่า</Text>
-          </TouchableOpacity>
+                        {activeTab === 'chat_list' && (
+                            <ChatListScreen user={userData} onChatPress={handleStartChat} />
+                        )}
 
-          <TouchableOpacity 
-            style={[styles.tabButton, activeTab === 'chat_list' && styles.activeTab]} 
-            onPress={() => setActiveTab('chat_list')}
-          >
-            <Text style={{ fontSize: 24 }}>💬</Text>
-            <Text style={[styles.tabText, activeTab === 'chat_list' && styles.activeTabText]}>แชท</Text>
-          </TouchableOpacity>
+                        {activeTab === 'profile' && (
+                            <ProfileScreen 
+                                route={{ params: { user: userData } }} 
+                                navigation={{ 
+                                    navigate: (screenName) => {
+                                        if (screenName === 'ManageBookings') setCurrentScreen('manageBookings');
+                                        else if (screenName === 'AddProduct' || screenName === 'EditProduct') setCurrentScreen('EditProduct');
+                                        else if (screenName === 'myBookings') setCurrentScreen('myBookings');
+                                        else if (screenName === 'Login') handleLogout();
+                                        else if (screenName === 'EditAddress') {
+                                             setAddress(userData?.address || "");
+                                             setCurrentScreen('editAddress');
+                                        }
+                                    },
+                                    reset: (config) => { if (config.routes[0].name === 'Login') handleLogout(); }
+                                }}
+                            />
+                        )}
+                    </>
+                )}
 
-          <TouchableOpacity 
-            style={[styles.tabButton, activeTab === 'profile' && styles.activeTab]} 
-            onPress={() => setActiveTab('profile')}
-          >
-            <Text style={{ fontSize: 24 }}>👤</Text>
-            <Text style={[styles.tabText, activeTab === 'profile' && styles.activeTabText]}>โปรไฟล์</Text>
-          </TouchableOpacity>
-        </View>
-      </View>
+                {/* 2. โซนหน้าจอเสริม (Modals) - ปรับตำแหน่งให้อยู่ใน View flex:1 เดียวกันเพื่อให้เมนูไม่หาย */}
+                
+                {currentScreen === 'manageBookings' && (
+                    <View style={{position: 'absolute', top: 0, bottom: 0, left: 0, right: 0, backgroundColor: '#fff', zIndex: 999}}>
+                        <TouchableOpacity 
+                           style={{position: 'absolute', top: 40, right: 20, zIndex: 1000, backgroundColor: '#eee', padding: 8, borderRadius: 20}}
+                           onPress={() => setCurrentScreen('main')}
+                        >
+                           <Text>❌ ปิด</Text>
+                        </TouchableOpacity>
+                        <ManageBookingsScreen 
+                            navigation={{ 
+                                goBack: () => setCurrentScreen('main'),
+                                navigate: (screenName) => {
+                                    if (screenName === 'AddProduct' || screenName === 'EditProduct') setCurrentScreen('EditProduct');
+                                    else setCurrentScreen(screenName);
+                                }
+                            }}
+                        />
+                    </View>
+                )}
+
+                {(currentScreen === 'EditProduct' || currentScreen === 'AddProduct') && (
+                    <View style={{position: 'absolute', top: 0, bottom: 0, left: 0, right: 0, backgroundColor: '#fff', zIndex: 1001}}>
+                        <EditProductScreen 
+                            route={{ params: { 
+                                product: selectedProduct, // ส่งสินค้าเดิม (ถ้ามี)
+                                userId: userData?.id      // ✅ ส่ง ID เพื่อแก้ปัญหา "ไม่พบรหัสผู้ใช้งาน"
+                            } }} 
+                            navigation={{ 
+                                goBack: () => setCurrentScreen('main'),
+                                navigate: (screen) => setCurrentScreen(screen)
+                            }}
+                            onBack={() => setCurrentScreen('main')}
+                        />
+                    </View>
+                )}
+
+                {currentScreen === 'editAddress' && (
+                    <View style={{position: 'absolute', top: 0, bottom: 0, left: 0, right: 0, backgroundColor: '#fff', zIndex: 999, padding: 20, justifyContent:'center'}}>
+                        <Text style={{fontSize: 20, marginBottom: 20}}>แก้ไขที่อยู่จัดส่ง</Text>
+                        <TextInput 
+                            style={{borderWidth:1, borderColor:'#ddd', padding:10, marginBottom:20, borderRadius:8}}
+                            value={address}
+                            onChangeText={setAddress}
+                            placeholder="ใส่ที่อยู่ใหม่..."
+                        />
+                        <Button title="บันทึก" onPress={handleUpdateAddress} />
+                        <Button title="ยกเลิก" color="red" onPress={() => setCurrentScreen('main')} />
+                    </View>
+                )}
+{/* 💬 ส่วนแสดงหน้าจอแชท */}
+{currentScreen === 'chat' && !!chatParams && (
+    <View style={{ position: 'absolute', top: 0, bottom: 0, left: 0, right: 0, backgroundColor: '#fff', zIndex: 9999 }}>
+        <ChatScreen 
+            user_id={userData?.id} 
+            room_id={chatParams.room_id} 
+            other_user_name={chatParams.other_user_name} 
+            onBack={() => { 
+                setCurrentScreen('main'); 
+                setChatParams(null); 
+            }} 
+        />
+    </View>
+)}
+                
+                {/* ➕ หน้าลงสินค้า/แก้ไขสินค้า (เด้งทับเนื้อหาแต่ไม่ทับ Bottom Bar) */}
+                {(currentScreen === 'EditProduct' || currentScreen === 'AddProduct') && (
+                    <View style={{ position: 'absolute', top: 0, bottom: 0, left: 0, right: 0, backgroundColor: '#fff', zIndex: 1500 }}>
+                        <EditProductScreen 
+                            route={{ params: { product: selectedProduct, userId: userData?.id } }} 
+                            onBack={() => setCurrentScreen('main')}
+                        />
+                    </View>
+                )}
+            </View> {/* ✅ ปิด View flex: 1 ที่หุ้มเนื้อหาทั้งหมด */}
+
+            {/* 3. Bottom Bar - วางไว้ล่างสุด นอก View flex:1 เพื่อให้แสดงค้างไว้เสมอ */}
+            <View style={[styles.bottomBar, { zIndex: 2000, backgroundColor: '#fff', borderTopWidth: 1, borderTopColor: '#eee' }]}>
+                <TouchableOpacity 
+                    style={[styles.tabButton, activeTab === 'market' && styles.activeTab]} 
+                    onPress={() => { setActiveTab('market'); setCurrentScreen('main'); }}
+                >
+                    <Text style={{ fontSize: 24 }}>🏠</Text>
+                    <Text style={[styles.tabText, activeTab === 'market' && styles.activeTabText]}>ตลาดเช่า</Text>
+                </TouchableOpacity>
+
+                <TouchableOpacity 
+                    style={[styles.tabButton, activeTab === 'chat_list' && styles.activeTab]} 
+                    onPress={() => { setActiveTab('chat_list'); setCurrentScreen('main'); }}
+                >
+                    <Text style={{ fontSize: 24 }}>💬</Text>
+                    <Text style={[styles.tabText, activeTab === 'chat_list' && styles.activeTabText]}>แชท</Text>
+                </TouchableOpacity>
+
+                <TouchableOpacity 
+                    style={[styles.tabButton, activeTab === 'profile' && styles.activeTab]} 
+                    onPress={() => { setActiveTab('profile'); setCurrentScreen('main'); }}
+                >
+                    <Text style={{ fontSize: 24 }}>👤</Text>
+                    <Text style={[styles.tabText, activeTab === 'profile' && styles.activeTabText]}>โปรไฟล์</Text>
+                </TouchableOpacity>
+            </View>
+        </View> // ✅ ปิด View ใหญ่สุดของ Return
     );
-  }
+}
 
-  // 8. หน้า KYC Form
+// 8. หน้า KYC Form (อยู่นอกเงื่อนไข if หลัก)
   if (userData && mode === 'kyc') {
       return (
         <ScrollView contentContainerStyle={styles.scrollContainer}>

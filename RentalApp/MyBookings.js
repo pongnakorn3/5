@@ -96,6 +96,10 @@ export default function MyBookingsScreen({ user, setCurrentScreen, setSelectedPr
 
     // ปรับ Logic สถานะ
     switch (item.status) {
+      case 'waiting_verification': 
+            statusColor = '#607D8B'; // สีเทาฟ้า
+            statusText = 'ระบบกำลังตรวจสอบ'; 
+            break;
         case 'pending':
             statusColor = '#FFC107';
             statusText = '⏳ รอเจ้าของอนุมัติ';

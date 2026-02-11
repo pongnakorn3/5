@@ -573,33 +573,68 @@ app.post('/kyc/submit', upload.fields([{ name: 'id_card_image' }, { name: 'face_
 });
 
 // ==========================================
-// 🛍️ Product & Management API
+// 🛍️ Product & Management API (ฉบับแก้ไข)
 // ==========================================
 
-// ลงประกาศสินค้าใหม่
+// 2. [เพิ่มเข้าไปใหม่] แก้ไขข้อมูลสินค้า (PUT)
+app.put('/products/:id', upload.single('image'), async (req, res) => {
+    try {
+        const productId = req.params.id;
+        const { name, description, price_per_day, deposit, quantity, existingImage } = req.body;
+        
+        // ถ้ามีการอัปโหลดรูปใหม่ (req.file) ให้ใช้ชื่อไฟล์ใหม่ ถ้าไม่เปลี่ยนให้ใช้ชื่อเดิมที่แอปส่งมา (existingImage)
+        const image_url = req.file ? req.file.filename : existingImage;
+
+        const priceValue = parseFloat(price_per_day) || 0;
+        const depValue = parseFloat(deposit) || 0;
+        const qtyValue = parseInt(quantity) || 1;
+
+        const sql = `
+            UPDATE products 
+            SET name = $1, description = $2, price_per_day = $3, deposit = $4, quantity = $5, image_url = $6 
+            WHERE id = $7
+            RETURNING *
+        `;
+
+        const result = await pool.query(sql, [
+            name, description, priceValue, depValue, qtyValue, image_url, productId
+        ]);
+
+        if (result.rowCount === 0) {
+            return res.status(404).json({ success: false, message: 'ไม่พบสินค้าที่ต้องการแก้ไข' });
+        }
+
+        res.json({ success: true, message: 'อัปเดตข้อมูลสำเร็จ', product: result.rows[0] });
+    } catch (err) {
+        console.error("Update Product Error:", err);
+        res.status(500).json({ success: false, message: "Server Error", error: err.message });
+    }
+});
+
+// 1. [แก้ไขของเก่า] เพิ่มสินค้าใหม่ (POST)
 app.post('/products', upload.single('image'), async (req, res) => {
     try {
-        // 1. รับค่า deposit เพิ่มจาก req.body
-        const { name, description, price, owner_id, quantity, deposit } = req.body; 
+        const { name, description, price_per_day, owner_id, quantity, deposit } = req.body; 
         const image_url = req.file ? req.file.filename : null;
         
-        // 2. แปลงค่าเป็นตัวเลขให้ถูกต้อง
-        const qty = quantity ? parseInt(quantity) : 1;
-        const dep = deposit ? parseInt(deposit) : 0; 
+        const priceValue = parseFloat(price_per_day) || 0;
+        const depValue = parseFloat(deposit) || 0;
+        const qtyValue = parseInt(quantity) || 1;
+        const ownerIdValue = owner_id ? parseInt(owner_id) : null;
 
-        // 3. แก้ไข SQL Query เพื่อเพิ่มคอลัมน์ deposit
         const newProduct = await pool.query(
             `INSERT INTO products (name, description, price_per_day, image_url, owner_id, quantity, deposit) 
              VALUES ($1, $2, $3, $4, $5, $6, $7) RETURNING *`, 
-            [name, description, price, image_url, owner_id, qty, dep] // 4. ส่งค่า dep เข้าไปที่ $7
+            [name, description, priceValue, image_url, ownerIdValue, qtyValue, depValue]
         );
 
         res.json({ success: true, product: newProduct.rows[0] });
     } catch (err) {
         console.error("Add Product Error:", err);
-        res.status(500).json({ success: false, message: "Server Error" });
+        res.status(500).json({ success: false, message: "Server Error", error: err.message });
     }
 });
+
 // ดึงสินค้าทั้งหมดพร้อมชื่อเจ้าของ
 app.get('/products', async (req, res) => {
     try {
@@ -744,7 +779,7 @@ app.post('/bookings/update-status', async (req, res) => {
 // Register (สมัครสมาชิก)
 app.post('/auth/register', async (req, res) => {
     try {
-        const { email, password, full_name, phone } = req.body;
+        const { email, password, full_name, phone, address } = req.body;
         const checkUser = await pool.query("SELECT * FROM users WHERE email = $1", [email]);
         if (checkUser.rows.length > 0) return res.status(400).json({ success: false, message: "อีเมลนี้ใช้แล้ว" });
 
@@ -754,10 +789,10 @@ app.post('/auth/register', async (req, res) => {
         console.log(`\n=== 📲 OTP for ${phone}: ${otpCode} ===\n`);
 
         await pool.query(
-            `INSERT INTO users (email, password, full_name, phone, kyc_status, otp_code, address) 
- VALUES ($1, $2, $3, $4, 'pending_otp', $5, $6)`,
-            [email, hashedPassword, full_name, phone, otpCode, address]
-        );
+    `INSERT INTO users (email, password, full_name, phone, kyc_status, otp_code, address) 
+     VALUES ($1, $2, $3, $4, $5, $6, $7)`,
+    [email, hashedPassword, full_name, phone, 'pending_otp', otpCode, address]
+);
         res.json({ success: true, message: "สมัครเบื้องต้นสำเร็จ และส่ง OTP แล้ว" });
     } catch (err) {
         console.error(err);
@@ -834,28 +869,214 @@ app.post('/bookings/confirm-payment', upload.single('slip_image'), async (req, r
     }
 });
 
-// ดึงยอดเงินในกระเป๋า
-app.get('/wallet/:userId', async (req, res) => {
+// ==========================================
+// 🛒 Cart API (ระบบตะกร้าสินค้า) - เพิ่มใหม่ตรงนี้
+// ==========================================
+
+// 🛒 1. เพิ่มสินค้าลงตะกร้า (Add to Cart)
+app.post('/cart/add', async (req, res) => {
     try {
-        // ❌ ของเดิม (ผิดชื่อ): SELECT wallet_balance ...
-        // ✅ ของใหม่ (แก้ให้ตรง DB คุณ): เลือก 'wallet'
-        const [rows] = await db.execute('SELECT wallet FROM users WHERE id = ?', [req.params.userId]);
+        const { user_id, product_id, start_date, end_date, days, total_price } = req.body;
         
-        if (rows.length > 0) {
-            // ส่งค่ากลับไป โดยเช็คว่าถ้าเป็น null ให้เป็น 0
-            res.json({ success: true, balance: rows[0].wallet || 0 }); 
-        } else {
-            res.json({ success: false, message: 'User not found' });
-        }
-    } catch (error) {
-        res.status(500).json({ success: false, error: error.message });
+        // เช็ก SQL: PostgreSQL ต้องใช้ $1, $2, $3... และใช้ pool.query
+        const query = `
+            INSERT INTO cart_items (user_id, product_id, start_date, end_date, days, total_price)
+            VALUES ($1, $2, $3, $4, $5, $6)
+            RETURNING *;
+        `;
+        
+        const values = [user_id, product_id, start_date, end_date, days, total_price];
+        const result = await pool.query(query, values); // 👈 แก้ตรงนี้จาก db เป็น pool
+
+        res.json({ success: true, item: result.rows[0] });
+
+    } catch (err) {
+        console.error("Cart Error:", err);
+        res.status(500).json({ success: false, error: err.message });
     }
 });
 
+// 🛒 2. ดึงข้อมูลตะกร้า (Get Cart)
+app.get('/cart/:userId', async (req, res) => {
+    try {
+        const { userId } = req.params;
+        const query = `
+            SELECT cart_items.*, products.name as product_name, products.image_url 
+            FROM cart_items 
+            JOIN products ON cart_items.product_id = products.id
+            WHERE cart_items.user_id = $1
+            ORDER BY cart_items.created_at DESC;
+        `;
+        
+        const result = await pool.query(query, [userId]); // 👈 แก้ตรงนี้จาก db เป็น pool
+        res.json({ success: true, items: result.rows });
+
+    } catch (err) {
+        console.error(err);
+        res.status(500).json({ success: false, error: err.message });
+    }
+});
+   // API สำหรับจ่ายเงินแบบ "เหมาตะกร้า"
+// app.post('/cart/checkout', upload.single('slip_image'), async (req, res) => {
+//     try {
+//         console.log("Processing Cart Checkout...");
+//         const { user_id, items } = req.body;
+        
+//         // เช็คว่ามีไฟล์รูปไหม
+//         const slipImage = req.file ? req.file.filename : null;
+//         if (!slipImage) {
+//             return res.status(400).json({ success: false, message: "กรุณาแนบสลิปโอนเงิน" });
+//         }
+
+//         // แปลงข้อมูลสินค้าจาก String กลับเป็น Array
+//         const cartItems = JSON.parse(items); 
+
+//         // 1. วนลูปสร้าง Booking ให้สินค้าแต่ละชิ้น
+//         for (const item of cartItems) {
+//             // คำนวณราคารวมของชิ้นนั้นๆ (แปลงเป็น number เพื่อความชัวร์)
+//             const itemTotal = Number(item.total_price);
+
+//             // บันทึกลงตาราง bookings
+//             await pool.query(
+//                 `INSERT INTO bookings 
+//                 (user_id, product_id, start_date, end_date, total_price, status, slip_image, payment_status)
+//                 VALUES ($1, $2, $3, $4, $5, 'waiting_verification', $6, 'paid')`,
+//                 [user_id, item.product_id, item.start_date, item.end_date, itemTotal, slipImage]
+//             );
+//         }
+
+//         // 2. ล้างตะกร้า (หลังจากสั่งจองเสร็จแล้วต้องลบของออกจากตะกร้า)
+//         await pool.query('DELETE FROM cart_items WHERE user_id = $1', [user_id]);
+
+//         res.json({ success: true, message: "จองสำเร็จเรียบร้อย" });
+
+//     } catch (err) {
+//         console.error("Checkout Error:", err);
+//         res.status(500).json({ success: false, message: err.message });
+//     }
+// });
+
+// 🛒 3. ลบของจากตะกร้า (Delete Item)
+app.delete('/cart/:itemId', async (req, res) => {
+    try {
+        const { itemId } = req.params;
+        await pool.query('DELETE FROM cart_items WHERE id = $1', [itemId]); // 👈 แก้ตรงนี้จาก db เป็น pool
+        res.json({ success: true });
+    } catch (err) {
+        console.error(err);
+        res.status(500).json({ success: false, error: err.message });
+    }
+});
+// 🛒 4. สั่งซื้อสินค้าทั้งหมดในตะกร้า (Cart Checkout)
+app.post('/cart/checkout', upload.single('slip_image'), async (req, res) => {
+    const client = await pool.connect();
+    try {
+        await client.query('BEGIN');
+        
+        const { user_id, items } = req.body;
+        const slipImageName = req.file ? req.file.filename : null;
+
+        if (!slipImageName) {
+            throw new Error("กรุณาอัปโหลดสลิปโอนเงิน");
+        }
+
+        // แปลงรายการสินค้าจาก String เป็น Array
+        const cartItems = JSON.parse(items);
+
+        for (const item of cartItems) {
+            // ✅ แก้ไข: เปลี่ยน user_id -> renter_id และ slip_url -> slip_image
+            await client.query(
+                `INSERT INTO bookings (
+                    renter_id, 
+                    product_id, 
+                    total_price, 
+                    slip_image, 
+                    status, 
+                    start_date, 
+                    end_date,
+                    days,
+                    payment_status
+                ) VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9)`,
+                [
+                    user_id,             // ใส่ในคอลัมน์ renter_id
+                    item.product_id, 
+                    item.total_price, 
+                    slipImageName,       // ใส่ในคอลัมน์ slip_image
+                    'waiting_verification', // เปลี่ยนจาก pending เป็นรอตรวจสอบสลิป
+                    item.start_date, 
+                    item.end_date,
+                    item.days,
+                    'paid'               // อัปเดตสถานะการชำระเงิน
+                ]
+            );
+        }
+
+        // ลบสินค้าออกจากตะกร้าหลังจากสร้างรายการจองสำเร็จ
+        await client.query('DELETE FROM cart_items WHERE user_id = $1', [user_id]);
+
+        await client.query('COMMIT');
+        res.json({ success: true, message: 'บันทึกรายการชำระเงินเรียบร้อยแล้ว' });
+
+    } catch (err) {
+        await client.query('ROLLBACK');
+        console.error("Checkout Error:", err);
+        res.status(500).json({ success: false, message: 'เกิดข้อผิดพลาดในการบันทึกข้อมูล' });
+    } finally {
+        client.release();
+    }
+});
+// 💰 3. อัปเดตสถานะและการจัดการเงิน (Wallet Logic)
+app.post('/bookings/update-status', async (req, res) => {
+    const { booking_id, status } = req.body; // รับค่าจาก Frontend
+    const client = await pool.connect();
+
+    try {
+        await client.query('BEGIN');
+
+        // 1. ดึงข้อมูลการจองปัจจุบันมาตรวจสอบค่าเงิน
+        const bookingRes = await client.query('SELECT * FROM bookings WHERE id = $1', [booking_id]);
+        if (bookingRes.rows.length === 0) throw new Error("ไม่พบข้อมูลการจอง");
+        
+        const currentBooking = bookingRes.rows[0];
+        
+        // ดึงค่าเงินโดยอ้างอิงชื่อคอลัมน์จาก DB จริงของคุณ
+        const rentalFee = Number(currentBooking.rental_fee) || 0; //
+        const depositFee = Number(currentBooking.deposit_fee) || 0; //
+        const ownerId = currentBooking.owner_id; 
+        const renterId = currentBooking.renter_id; //
+
+        // 2. อัปเดตสถานะในตาราง bookings
+        await client.query('UPDATE bookings SET status = $1 WHERE id = $2', [status, booking_id]);
+
+        // 3. Logic การจัดการเงินเข้า Wallet
+        if (status === 'active') {
+            // เมื่อเจ้าของร้านกดยืนยัน: โอนค่าเช่า (Rental Fee) ให้เจ้าของ
+            await client.query(
+                'UPDATE users SET wallet = COALESCE(wallet, 0) + $1 WHERE id = $2', 
+                [rentalFee, ownerId]
+            );
+        } else if (status === 'completed') {
+            // เมื่อจบงานปกติ: คืนค่ามัดจำ (Deposit Fee) ให้คนเช่า
+            await client.query(
+                'UPDATE users SET wallet = COALESCE(wallet, 0) + $1 WHERE id = $2', 
+                [depositFee, renterId]
+            );
+        }
+
+        await client.query('COMMIT');
+        res.json({ success: true, message: `อัปเดตสถานะเป็น ${status} เรียบร้อย` });
+
+    } catch (err) {
+        await client.query('ROLLBACK');
+        console.error("Update Status Error:", err);
+        res.status(500).json({ success: false, message: err.message });
+    } finally {
+        client.release();
+    }
+});
 // ==========================================
 // 🔗 Social Routes & Redirects
 // ==========================================
-
 app.get('/', (req, res) => res.send('Backend Server is Online ✅'));
 
 app.get('/auth/google', passport.authenticate('google', { scope: ['profile', 'email'] }));
