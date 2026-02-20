@@ -12,18 +12,17 @@ export default function ProfileScreen({ route, navigation }) {
             Alert.alert("Error", "ไม่พบข้อมูลผู้ใช้");
             return;
         }
-        // ส่ง user_id ไปด้วยเพื่อให้หน้า EditAddress รู้ว่าจะอัปเดตใคร
         navigation.navigate('EditAddress', { userId: user.id, currentAddress: user.address });
     };
 
-    // 🛒 ฟังก์ชันไปหน้าลงประกาศสินค้า (จุดสำคัญที่ต้องแก้)
+    // 🛒 ฟังก์ชันไปหน้าลงประกาศสินค้าใหม่
     const handleAddProduct = () => {
         if (!user?.id) {
             Alert.alert("Error", "กรุณาเข้าสู่ระบบใหม่");
             return;
         }
-        // ✅ ต้องส่ง userId ไปใน params เพื่อให้ EditProductScreen นำไปใช้เป็น owner_id
-        navigation.navigate('AddProduct', { userId: user.id });
+        // ✅ ส่งข้อมูล user ไปให้หน้า AddProduct
+        navigation.navigate('AddProduct', { user: user });
     };
 
     const handleLogout = () => {
@@ -45,7 +44,6 @@ export default function ProfileScreen({ route, navigation }) {
         );
     };
 
-    // หน้าจอแสดงผลกรณีไม่มีข้อมูล User
     if (!user || !user.id) {
         return (
             <View style={styles.container}>
@@ -71,7 +69,6 @@ export default function ProfileScreen({ route, navigation }) {
                 <Text style={styles.name}>{user?.full_name || "ไม่ระบุชื่อ"}</Text>
                 <Text style={styles.email}>{user?.email || "ไม่มีอีเมล"}</Text>
                 
-                {/* แสดงที่อยู่ย่อๆ แตะเพื่อแก้ไข */}
                 <TouchableOpacity style={styles.addressContainer} onPress={handleEditAddress}>
                     <Ionicons name="location-sharp" size={16} color="#FF385C" />
                     <Text style={styles.addressText} numberOfLines={1}>
@@ -80,7 +77,6 @@ export default function ProfileScreen({ route, navigation }) {
                     <Ionicons name="pencil-outline" size={14} color="#9ca3af" style={{marginLeft: 5}} />
                 </TouchableOpacity>
 
-                {/* Badge สถานะ KYC */}
                 <View style={[styles.badge, { backgroundColor: user?.kyc_status === 'approved' ? '#d1fae5' : '#fee2e2' }]}>
                     <Text style={{ color: user?.kyc_status === 'approved' ? '#065f46' : '#991b1b', fontWeight: 'bold', fontSize: 12 }}>
                         {user?.kyc_status === 'approved' ? '✅ ยืนยันตัวตนแล้ว' : '⚠️ ยังไม่ยืนยันตัวตน'}
@@ -90,11 +86,23 @@ export default function ProfileScreen({ route, navigation }) {
 
             {/* --- Menu Section --- */}
             <View style={styles.menuContainer}>
-                <Text style={styles.sectionTitle}>เมนูจัดการ</Text>
+                <Text style={styles.sectionTitle}>การจัดการร้านค้า</Text>
+
+                {/* ✅ เมนูลงสินค้าใหม่ (ปรับให้เด่นขึ้น) */}
+                <TouchableOpacity style={[styles.menuItem, { borderLeftWidth: 4, borderLeftColor: '#FF385C' }]} onPress={handleAddProduct}>
+                    <View style={styles.iconBox}><Ionicons name="add-circle" size={26} color="#FF385C" /></View>
+                    <View style={{flex: 1}}>
+                        <Text style={[styles.menuText, { color: '#FF385C' }]}>ลงประกาศสินค้าใหม่</Text>
+                        <Text style={styles.subText}>สร้างรายได้จากการเพิ่มสินค้าในระบบ</Text>
+                    </View>
+                    <Ionicons name="chevron-forward" size={20} color="#CCC" />
+                </TouchableOpacity>
+
+                <Text style={styles.sectionTitle}>เมนูทั่วไป</Text>
 
                 {/* รายการเช่า */}
                 <TouchableOpacity style={styles.menuItem} onPress={() => navigation.navigate('myBookings', { userId: user.id })}>
-                    <View style={styles.iconBox}><Ionicons name="cube-outline" size={24} color="#FF385C" /></View>
+                    <View style={styles.iconBox}><Ionicons name="cube-outline" size={24} color="#4B5563" /></View>
                     <View style={{flex: 1}}>
                         <Text style={styles.menuText}>รายการเช่าของฉัน</Text>
                         <Text style={styles.subText}>ดูสถานะสินค้าที่คุณปล่อยเช่าและเช่ามา</Text>
@@ -102,19 +110,9 @@ export default function ProfileScreen({ route, navigation }) {
                     <Ionicons name="chevron-forward" size={20} color="#CCC" />
                 </TouchableOpacity>
 
-                {/* เพิ่มสินค้าใหม่ */}
-                <TouchableOpacity style={styles.menuItem} onPress={handleAddProduct}>
-                    <View style={styles.iconBox}><Ionicons name="add-circle-outline" size={24} color="#FF385C" /></View>
-                    <View style={{flex: 1}}>
-                        <Text style={styles.menuText}>ลงประกาศสินค้าใหม่</Text>
-                        <Text style={styles.subText}>สร้างรายได้จากการปล่อยเช่า</Text>
-                    </View>
-                    <Ionicons name="chevron-forward" size={20} color="#CCC" />
-                </TouchableOpacity>
-
                 {/* แก้ไขที่อยู่ */}
                 <TouchableOpacity style={styles.menuItem} onPress={handleEditAddress}>
-                    <View style={styles.iconBox}><Ionicons name="home-outline" size={24} color="#FF385C" /></View>
+                    <View style={styles.iconBox}><Ionicons name="home-outline" size={24} color="#4B5563" /></View>
                     <View style={{flex: 1}}>
                         <Text style={styles.menuText}>แก้ไขที่อยู่จัดส่ง</Text>
                         <Text style={styles.subText}>ระบุที่อยู่จัดส่งและที่อยู่รับของคืน</Text>
@@ -122,10 +120,10 @@ export default function ProfileScreen({ route, navigation }) {
                     <Ionicons name="chevron-forward" size={20} color="#CCC" />
                 </TouchableOpacity>
 
-                {/* เมนูยืนยันตัวตน (ถ้ายังไม่ผ่าน) */}
+                {/* เมนูยืนยันตัวตน */}
                 {user?.kyc_status !== 'approved' && (
                     <TouchableOpacity style={styles.menuItem} onPress={() => navigation.navigate('KYC', { userId: user.id })}>
-                        <View style={styles.iconBox}><Ionicons name="id-card-outline" size={24} color="#FF385C" /></View>
+                        <View style={styles.iconBox}><Ionicons name="id-card-outline" size={24} color="#4B5563" /></View>
                         <View style={{flex: 1}}>
                             <Text style={styles.menuText}>ยืนยันตัวตน (KYC)</Text>
                             <Text style={styles.subText}>เพิ่มความน่าเชื่อถือในการปล่อยเช่า</Text>
@@ -136,7 +134,6 @@ export default function ProfileScreen({ route, navigation }) {
 
                 <View style={styles.divider} />
                 
-                {/* ปุ่มออกจากระบบ */}
                 <TouchableOpacity style={styles.logoutButton} onPress={handleLogout}>
                     <Text style={styles.logoutText}>🚪 ออกจากระบบ</Text>
                 </TouchableOpacity>
@@ -194,7 +191,7 @@ const styles = StyleSheet.create({
         shadowOpacity: 0.05,
         shadowRadius: 2,
     },
-    iconBox: { width: 45, height: 45, backgroundColor: '#fff1f2', borderRadius: 14, alignItems: 'center', justifyContent: 'center', marginRight: 15 },
+    iconBox: { width: 45, height: 45, backgroundColor: '#f9fafb', borderRadius: 14, alignItems: 'center', justifyContent: 'center', marginRight: 15 },
     menuText: { fontSize: 16, fontWeight: 'bold', color: '#374151' },
     subText: { fontSize: 12, color: '#9ca3af', marginTop: 2 },
     divider: { height: 1, backgroundColor: '#e5e7eb', marginVertical: 15 },

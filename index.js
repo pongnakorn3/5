@@ -916,45 +916,6 @@ app.get('/cart/:userId', async (req, res) => {
         res.status(500).json({ success: false, error: err.message });
     }
 });
-   // API สำหรับจ่ายเงินแบบ "เหมาตะกร้า"
-// app.post('/cart/checkout', upload.single('slip_image'), async (req, res) => {
-//     try {
-//         console.log("Processing Cart Checkout...");
-//         const { user_id, items } = req.body;
-        
-//         // เช็คว่ามีไฟล์รูปไหม
-//         const slipImage = req.file ? req.file.filename : null;
-//         if (!slipImage) {
-//             return res.status(400).json({ success: false, message: "กรุณาแนบสลิปโอนเงิน" });
-//         }
-
-//         // แปลงข้อมูลสินค้าจาก String กลับเป็น Array
-//         const cartItems = JSON.parse(items); 
-
-//         // 1. วนลูปสร้าง Booking ให้สินค้าแต่ละชิ้น
-//         for (const item of cartItems) {
-//             // คำนวณราคารวมของชิ้นนั้นๆ (แปลงเป็น number เพื่อความชัวร์)
-//             const itemTotal = Number(item.total_price);
-
-//             // บันทึกลงตาราง bookings
-//             await pool.query(
-//                 `INSERT INTO bookings 
-//                 (user_id, product_id, start_date, end_date, total_price, status, slip_image, payment_status)
-//                 VALUES ($1, $2, $3, $4, $5, 'waiting_verification', $6, 'paid')`,
-//                 [user_id, item.product_id, item.start_date, item.end_date, itemTotal, slipImage]
-//             );
-//         }
-
-//         // 2. ล้างตะกร้า (หลังจากสั่งจองเสร็จแล้วต้องลบของออกจากตะกร้า)
-//         await pool.query('DELETE FROM cart_items WHERE user_id = $1', [user_id]);
-
-//         res.json({ success: true, message: "จองสำเร็จเรียบร้อย" });
-
-//     } catch (err) {
-//         console.error("Checkout Error:", err);
-//         res.status(500).json({ success: false, message: err.message });
-//     }
-// });
 
 // 🛒 3. ลบของจากตะกร้า (Delete Item)
 app.delete('/cart/:itemId', async (req, res) => {

@@ -1,28 +1,25 @@
 import React, { useState } from 'react';
-import { View, Text, TextInput, TouchableOpacity, Image, StyleSheet, ScrollView, Alert, ActivityIndicator } from 'react-native';
+import { 
+  View, Text, TextInput, TouchableOpacity, Image, 
+  StyleSheet, ScrollView, Alert, ActivityIndicator, SafeAreaView 
+} from 'react-native';
 import * as ImagePicker from 'expo-image-picker';
+import { Ionicons } from '@expo/vector-icons';
+import { BASE_URL } from './config'; 
 
-const API_URL = "https://uncookable-ross-nonabusively.ngrok-free.dev"; 
+export default function AddProductScreen({ route, navigation }) {
+  const userId = route?.params?.userId;
 
-export default function AddProductScreen({ route, navigation, onBack }) {
-  const user = route?.params?.user || {}; 
-  
+
   const [name, setName] = useState('');
   const [description, setDescription] = useState('');
   const [price, setPrice] = useState('');
-  const [deposit, setDeposit] = useState(''); // ✨ เพิ่ม State ค่ามัดจำ
+  const [deposit, setDeposit] = useState('');
   const [quantity, setQuantity] = useState('1'); 
   const [image, setImage] = useState(null);
   const [loading, setLoading] = useState(false);
 
-  const handleBack = () => {
-    if (onBack) {
-      onBack();
-    } else {
-      navigation.goBack();
-    }
-  };
-
+  // ฟังก์ชันเลือกรูปภาพ
   const pickImage = async () => {
     let result = await ImagePicker.launchImageLibraryAsync({
       mediaTypes: ImagePicker.MediaTypeOptions.Images,
@@ -36,145 +33,201 @@ export default function AddProductScreen({ route, navigation, onBack }) {
     }
   };
 
-  const handleSubmit = async () => {
-    // 🚩 เพิ่มการเช็ค 'deposit' ในเงื่อนไข
-    if (!name || !price || !deposit || !image || !quantity) {
-      Alert.alert("แจ้งเตือน", "กรุณากรอกข้อมูลให้ครบถ้วน รวมถึงค่ามัดจำและรูปภาพ");
-      return;
-    }
-
-    if (!user?.id) {
-      Alert.alert("ผิดพลาด", "ไม่พบข้อมูลผู้ใช้ กรุณาเข้าสู่ระบบใหม่");
-      return;
+  // ฟังก์ชันบันทึก (ลงประกาศ)
+  const handleSave = async () => {
+    if (!name || !price || !image || !quantity) {
+        Alert.alert('แจ้งเตือน', 'กรุณากรอกข้อมูลที่จำเป็นให้ครบถ้วน');
+        return;
     }
 
     setLoading(true);
-
     try {
-      const formData = new FormData();
-      formData.append('name', name);
-      formData.append('description', description);
-      formData.append('price', price);
-      formData.append('deposit', deposit); // ✨ ส่งค่ามัดจำไปที่ Server
-      formData.append('owner_id', user.id); 
-      formData.append('quantity', quantity);
+        const formData = new FormData();
+        formData.append('name', name);
+        formData.append('description', description);
+        formData.append('price_per_day', Number(price));
+        formData.append('deposit', deposit || '0');
+        formData.append('quantity', quantity);
+        formData.append('status', 'available');
 
-      const filename = image.split('/').pop();
-      const match = /\.(\w+)$/.exec(filename);
-      const type = match ? `image/${match[1]}` : `image/jpeg`;
+        if (userId) {
+            formData.append('owner_id', userId.toString());
+        }
 
-      formData.append('image', { uri: image, name: filename, type });
+        // จัดการรูปภาพเพื่อส่งเข้า FormData
+        const filename = image.split('/').pop();
+        const match = /\.(\w+)$/.exec(filename);
+        const type = match ? `image/${match[1]}` : `image`;
+        formData.append('image', { uri: image, name: filename, type });
 
-      const response = await fetch(`${API_URL}/products`, {
-        method: 'POST',
-        headers: { 'Content-Type': 'multipart/form-data' },
-        body: formData,
-      });
+        const response = await fetch(`${BASE_URL}/products`, {
+            method: 'POST',
+            body: formData,
+        });
+        const result = await response.json();
 
-      const data = await response.json();
-
-      if (data.success) {
-        Alert.alert("สำเร็จ", "ลงประกาศเรียบร้อยแล้ว! 🎉");
-        handleBack(); 
-      } else {
-        Alert.alert("ผิดพลาด", data.message || "อัปโหลดไม่สำเร็จ");
-      }
-
+        if (result.success || result.id) {
+            Alert.alert('สำเร็จ', 'ลงประกาศสินค้าเรียบร้อยแล้ว');
+            navigation.goBack(); // กลับไปหน้าก่อนหน้า
+        } else {
+            Alert.alert('เกิดข้อผิดพลาด', result.message || 'ไม่สามารถบันทึกได้');
+        }
     } catch (error) {
-      console.error(error);
-      Alert.alert("Error", "เชื่อมต่อ Server ไม่ได้");
+        console.error(error);
+        Alert.alert('Error', 'ไม่สามารถเชื่อมต่อกับเซิร์ฟเวอร์ได้');
     } finally {
-      setLoading(false);
+        setLoading(false);
     }
   };
 
   return (
-    <ScrollView style={styles.container}>
-      <Text style={styles.header}>📦 ลงประกาศปล่อยเช่า</Text>
-
-      <TouchableOpacity onPress={pickImage} style={styles.imagePicker}>
-        {image ? (
-          <Image source={{ uri: image }} style={styles.image} />
-        ) : (
-          <View style={styles.placeholder}>
-            <Text style={styles.placeholderText}>+ เพิ่มรูปสินค้า</Text>
-          </View>
-        )}
-      </TouchableOpacity>
-
-      <Text style={styles.label}>ชื่อสินค้า</Text>
-      <TextInput style={styles.input} placeholder="เช่น กล้อง Canon, PS5" value={name} onChangeText={setName} />
-
-      <Text style={styles.label}>รายละเอียด</Text>
-      <TextInput 
-        style={[styles.input, styles.textArea]} 
-        placeholder="สภาพสินค้า, อุปกรณ์ที่มีให้..." 
-        value={description} 
-        onChangeText={setDescription} 
-        multiline 
-      />
-
-      <View style={{ flexDirection: 'row', justifyContent: 'space-between' }}>
-        <View style={{ width: '48%' }}>
-          <Text style={styles.label}>จำนวนที่มี</Text>
-          <TextInput
-            style={styles.input}
-            value={quantity}
-            onChangeText={setQuantity}
-            keyboardType="numeric"
-            placeholder="1"
-          />
+    <SafeAreaView style={styles.container}>
+        <View style={styles.header}>
+          <TouchableOpacity onPress={() => navigation.goBack()} style={styles.backButton}>
+                <Ionicons name="chevron-back" size={28} color="#333" />
+          </TouchableOpacity>
+          <Text style={styles.headerTitle}>ลงประกาศสินค้าใหม่</Text>
+          <View style={{width: 40}} /> 
         </View>
-        <View style={{ width: '48%' }}>
-          <Text style={styles.label}>ค่าเช่า (ต่อวัน)</Text>
-          <TextInput 
-            style={styles.input} 
-            placeholder="500" 
-            value={price} 
-            onChangeText={setPrice} 
-            keyboardType="numeric" 
-          />
-        </View>
-      </View>
 
-      {/* ✨ ช่องกรอกค่ามัดจำที่เพิ่มใหม่ */}
-      <Text style={[styles.label, { color: '#FF385C' }]}>ค่ามัดจำสินค้า (บาท)</Text>
-      <TextInput 
-        style={[styles.input, { borderColor: '#FF385C', borderWidth: 1.5 }]} 
-        placeholder="ระบุค่ามัดจำที่คนเช่าต้องจ่าย" 
-        value={deposit} 
-        onChangeText={setDeposit} 
-        keyboardType="numeric" 
-      />
-      <Text style={{ fontSize: 12, color: '#888', marginTop: 5 }}>
-        * ค่ามัดจำจะรวมอยู่ในยอดโอน และเจ้าของต้องคืนเมื่อได้รับสินค้าคืน
-      </Text>
+        <ScrollView contentContainerStyle={styles.scrollContent}>
+            {/* เลือกรูปภาพ */}
+            <TouchableOpacity onPress={pickImage} style={styles.imagePicker}>
+                {image ? (
+                    <Image source={{ uri: image }} style={styles.imagePreview} />
+                ) : (
+                    <View style={{alignItems:'center'}}>
+                        <Ionicons name="camera-outline" size={50} color="#ccc" />
+                        <Text style={styles.imagePickerText}>คลิกเพื่อเลือกรูปภาพสินค้า</Text>
+                    </View>
+                )}
+            </TouchableOpacity>
 
-      <TouchableOpacity style={styles.button} onPress={handleSubmit} disabled={loading}>
-        {loading ? <ActivityIndicator color="#fff" /> : <Text style={styles.buttonText}>ลงประกาศเลย 🚀</Text>}
-      </TouchableOpacity>
+            <Text style={styles.label}>ชื่อสินค้า *</Text>
+            <TextInput 
+                style={styles.input} 
+                value={name} 
+                onChangeText={setName} 
+                placeholder="เช่น กล้อง Sony A7IV" 
+            />
 
-      <TouchableOpacity style={styles.backButton} onPress={handleBack}>
-        <Text style={styles.backButtonText}>ยกเลิก</Text>
-      </TouchableOpacity>
-      
-      <View style={{ height: 50 }} />
-    </ScrollView>
+            <View style={styles.row}>
+                <View style={{flex: 1, marginRight: 10}}>
+                    <Text style={styles.label}>ราคาเช่า/วัน *</Text>
+                    <TextInput 
+                        style={styles.input} 
+                        value={price} 
+                        onChangeText={setPrice} 
+                        placeholder="0" 
+                        keyboardType="numeric"
+                    />
+                </View>
+                <View style={{flex: 1}}>
+                    <Text style={styles.label}>จำนวนชิ้น *</Text>
+                    <TextInput 
+                        style={styles.input} 
+                        value={quantity} 
+                        onChangeText={setQuantity} 
+                        placeholder="1" 
+                        keyboardType="numeric"
+                    />
+                </View>
+            </View>
+
+            <Text style={styles.label}>ค่ามัดจำสินค้า (บาท)</Text>
+            <TextInput 
+                style={styles.input} 
+                value={deposit} 
+                onChangeText={setDeposit} 
+                placeholder="ระบุค่ามัดจำ (ถ้ามี)" 
+                keyboardType="numeric"
+            />
+
+            <Text style={styles.label}>รายละเอียดเพิ่มเติม</Text>
+            <TextInput 
+                style={[styles.input, styles.textArea]} 
+                value={description} 
+                onChangeText={setDescription} 
+                placeholder="อธิบายสภาพสินค้า..." 
+                multiline
+            />
+
+            <TouchableOpacity 
+                style={[styles.saveButton, loading && { backgroundColor: '#ccc' }]} 
+                onPress={handleSave}
+                disabled={loading}
+            >
+                {loading ? (
+                    <ActivityIndicator color="#fff" />
+                ) : (
+                    <View style={styles.buttonContent}>
+                        <Ionicons name="add-circle-outline" size={22} color="#fff" />
+                        <Text style={styles.saveButtonText}>ยืนยันลงประกาศ</Text>
+                    </View>
+                )}
+            </TouchableOpacity>
+            
+            <TouchableOpacity style={styles.cancelButton} onPress={() => navigation.goBack()}>
+                <Text style={styles.cancelButtonText}>ยกเลิก</Text>
+            </TouchableOpacity>
+
+            <View style={{height: 50}} />
+        </ScrollView>
+    </SafeAreaView>
   );
 }
 
 const styles = StyleSheet.create({
-  container: { flex: 1, padding: 20, backgroundColor: '#fff' },
-  header: { fontSize: 24, fontWeight: 'bold', marginBottom: 20, textAlign: 'center', marginTop: 40 },
-  label: { fontSize: 16, fontWeight: 'bold', marginTop: 15, marginBottom: 5 },
-  input: { borderWidth: 1, borderColor: '#ccc', borderRadius: 8, padding: 12, fontSize: 16, backgroundColor: '#f9f9f9' },
-  textArea: { height: 80, textAlignVertical: 'top' },
-  imagePicker: { alignItems: 'center', marginBottom: 20 },
-  image: { width: '100%', height: 200, borderRadius: 10 },
-  placeholder: { width: '100%', height: 200, backgroundColor: '#eee', borderRadius: 10, justifyContent: 'center', alignItems: 'center', borderStyle: 'dashed', borderWidth: 2, borderColor: '#aaa' },
-  placeholderText: { color: '#666', fontSize: 16 },
-  button: { backgroundColor: '#FF385C', padding: 15, borderRadius: 10, alignItems: 'center', marginTop: 30 },
-  buttonText: { color: '#fff', fontSize: 18, fontWeight: 'bold' },
-  backButton: { padding: 15, alignItems: 'center', marginTop: 10 },
-  backButtonText: { color: '#666', fontSize: 16 },
+  container: { flex: 1, backgroundColor: '#fff' },
+  header: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    justifyContent: 'space-between',
+    paddingVertical: 10,
+    paddingHorizontal: 15,
+    backgroundColor: '#fff',
+    borderBottomWidth: 1,
+    borderBottomColor: '#eee',
+    paddingTop: 40 // ปรับตามความเหมาะสมของ SafeArea
+  },
+  backButton: { padding: 5 },
+  headerTitle: { fontSize: 18, fontWeight: 'bold', color: '#333' },
+  scrollContent: { padding: 20 },
+  imagePicker: {
+    width: '100%',
+    height: 220,
+    backgroundColor: '#f8f9fa',
+    borderRadius: 15,
+    justifyContent: 'center',
+    alignItems: 'center',
+    marginBottom: 25,
+    borderWidth: 1,
+    borderColor: '#e9ecef',
+    borderStyle: 'dashed'
+  },
+  imagePickerText: { color: '#adb5bd', marginTop: 10, fontSize: 14 },
+  imagePreview: { width: '100%', height: '100%', borderRadius: 15, resizeMode: 'cover' },
+  label: { fontSize: 15, marginBottom: 8, fontWeight: '600', color: '#495057' },
+  input: {
+    borderWidth: 1,
+    borderColor: '#dee2e6',
+    borderRadius: 10,
+    padding: 12,
+    fontSize: 16,
+    marginBottom: 18,
+    backgroundColor: '#fff'
+  },
+  row: { flexDirection: 'row', justifyContent: 'space-between' },
+  textArea: { height: 100, textAlignVertical: 'top' },
+  saveButton: {
+    padding: 16,
+    borderRadius: 12,
+    alignItems: 'center',
+    marginTop: 10,
+    backgroundColor: '#FF385C'
+  },
+  buttonContent: { flexDirection: 'row', alignItems: 'center' },
+  saveButtonText: { color: '#fff', fontSize: 18, fontWeight: 'bold', marginLeft: 8 },
+  cancelButton: { marginTop: 20, alignItems:'center' },
+  cancelButtonText: { color: '#adb5bd', fontSize: 15 }
 });

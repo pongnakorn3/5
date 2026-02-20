@@ -11,12 +11,20 @@ export default function ManageBookingsScreen({ route, navigation }) {
     const [products, setProducts] = useState([]); // ✅ เพิ่มบรรทัดนี้เพื่อเก็บสินค้า
     const [bookings, setBookings] = useState([]);
     const [loading, setLoading] = useState(true);
+    const mode = route?.params?.initialTab;
 
     useEffect(() => {
-        if (user?.id) {
-            fetchOwnerBookings();
+    if (user?.id) {
+        // 2. ลองใส่ console.log เช็คดูว่าค่าที่ส่งมาคืออะไร
+        console.log("Current Mode:", mode); 
+
+        if (mode === 'products') {
+            fetchMyProducts(); // ดึงสินค้า
+        } else {
+            fetchOwnerBookings(); // ดึงการจอง
         }
-    }, [user?.id]);
+    }
+}, [user?.id, mode]); // ใส่ mode ใน dependency เพื่อให้มันทำงานเมื่อเปลี่ยนหน้า
 
     const fetchOwnerBookings = async () => {
         if (!user?.id) return;
@@ -269,13 +277,13 @@ export default function ManageBookingsScreen({ route, navigation }) {
                 <ActivityIndicator size="large" color="#FF385C" style={{marginTop: 50}} />
             ) : (
                 <FlatList
-                    data={tab === 'bookings' ? bookings : products}
-                    keyExtractor={(item) => item.id.toString()}
-                    renderItem={renderItem}
-                    refreshControl={<RefreshControl refreshing={loading} onRefresh={fetchOwnerBookings} />}
-                    ListEmptyComponent={<Text style={styles.emptyText}>ยังไม่มีรายการคำขอเช่าสินค้าของคุณ</Text>}
-                    contentContainerStyle={{ paddingBottom: 30 }}
-                />
+    // ถ้า initialTab เป็น products ให้ใช้ข้อมูลจาก state products
+    data={mode === 'products' ? products : bookings}
+    renderItem={mode === 'products' ? renderProductItem : renderItem} 
+
+    keyExtractor={(item) => item.id.toString()}
+    // ... ส่วนอื่นคงเดิม
+/>
             )}
         </View>
     );
